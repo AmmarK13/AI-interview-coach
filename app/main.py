@@ -4,6 +4,7 @@ from fastapi import FastAPI, File, HTTPException,Depends, UploadFile
 from fastapi.responses import JSONResponse
 from app.core.database import Base, engine, SessionLocal
 from app.models.user import User
+from app.models.questions import Question
 from app.models.interviews import InterviewSession
 from app.models.audio_response import AudioResponse
 from pydantic import BaseModel, EmailStr, Field
@@ -13,12 +14,22 @@ from app.core.database import get_db
 from app.utils.util import save_upload
 from app.utils.transcribe import transcribe_audio
 import uvicorn
+from enum import Enum
+
+class ExperienceLevel(str, Enum):
+    intern = "intern"
+    junior = "junior"
+    mid = "mid"
+    senior = "senior"
+    lead = "lead"
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 class CreateSession(BaseModel):
     userid : str
     title:str
+    role:str
+    level: ExperienceLevel
 
 
 
@@ -104,7 +115,9 @@ def create_session(payload:CreateSession , db: Session=Depends(get_db)):
     #create a session
     ss= InterviewSession(
         user_id= payload.userid,
-        title=payload.title
+        title=payload.title,
+        role = payload.role,
+        level = payload.level
     )
     #commit the session
     db.add(ss)
@@ -116,6 +129,8 @@ def create_session(payload:CreateSession , db: Session=Depends(get_db)):
         "session_id": str(ss.id),
         "user_id": str(ss.user_id),
         "title": ss.title,
+        "role": ss.role,
+        "level":ss.level,
         "created_at": ss.created_at.isoformat() if ss.created_at else None
     }
 
@@ -133,6 +148,8 @@ def get_sessions(userid:str, db: Session=Depends(get_db)):
             {
                 "id": str(session.id),
                 "title": session.title,
+                "role": session.role,
+                "level": session.level,
                 "created_at": session.created_at.isoformat() if session.created_at else None
             }
             for session in user.sessions
@@ -154,6 +171,8 @@ def get_session(session_id : str, user_id:str,db : Session=Depends(get_db)):
      return {
          "session-id":session.id,
          "title":session.title,
+         "role": session.role,
+         "level":session.level,
          "created-at":session.created_at
      }
     
