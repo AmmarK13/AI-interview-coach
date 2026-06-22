@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException,Depends
+import os
+
+from fastapi import FastAPI, File, HTTPException,Depends, UploadFile
 from fastapi.responses import JSONResponse
 from app.core.database import Base, engine, SessionLocal
 from app.models.user import User
@@ -8,6 +10,8 @@ from pydantic import BaseModel, EmailStr, Field
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.utils.util import save_upload
+from app.utils.transcribe import transcribe_audio
 import uvicorn
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -32,6 +36,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+@app.get("/")
+def root():
+    return {"message": "Welcome to the AI Interview Coach API!"}
 
 @app.get("/health")
 def health_check():
@@ -150,6 +157,52 @@ def get_session(session_id : str, user_id:str,db : Session=Depends(get_db)):
          "created-at":session.created_at
      }
     
+@app.post("/sessions/{session_id}/upload-audio")
+def upload_audio(session_id: str, user_id: str, audio_file: UploadFile = File(...),db: Session = Depends(get_db)):
+    session = (
+        db.query(InterviewSession)
+        .filter(
+            InterviewSession.id == session_id,
+            InterviewSession.user_id == user_id
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    allowed_extensions = {".wav", ".mp3", ".qta"}
+    allowed_content_types = {
+        "audio/wav",
+        "audio/x-wav",
+        "audio/mpeg",
+        "audio/mp3",
+        "application/octet-stream",
+    }
+
+    file_extension = os.path.splitext(audio_file.filename or "")[1].lower()
+    if file_extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Only .wav, .mp3, and .qta files are allowed")
+
+    saved_path = save_upload(audio_file, "uploads/audio")
+
+    transcription_result = transcribe_audio(saved_path)
+    audio_response = AudioResponse(
+        session_id=session.id,
+        audio_path=saved_path,
+        transcript=transcription_result["transcript"],
+        duration_seconds=transcription_result["duration_seconds"],
+    )
+    db.add(audio_response)
+    db.commit()
+    db.refresh(audio_response)
+
+    return {
+        "message": "Audio uploaded and transcribed successfully",
+        "audio_response_id": str(audio_response.id),
+        "audio_path": audio_response.audio_path,
+        "transcript": audio_response.transcript,
+        "duration_seconds": audio_response.duration_seconds,
+    }
 
 
 if __name__ == "__main__":

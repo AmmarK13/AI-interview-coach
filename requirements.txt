@@ -26,6 +26,7 @@ alembic
 # Authentication & Security
 # ------------------------------------------------------------
 passlib[bcrypt]
+argon2-cffi
 python-jose[cryptography]
 pydantic[email]
 
