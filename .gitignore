@@ -81,3 +81,4 @@ site/
 # Node modules (if used for frontend)
 node_modules/
 
+whisper_cpp/
