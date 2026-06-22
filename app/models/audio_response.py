@@ -9,7 +9,7 @@ class AudioResponse(Base):
     __tablename__ = "audio_responses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id", ondelete="CASCADE"))
+    session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id", ondelete="CASCADE"),index=True)
     audio_path = Column(Text, nullable=False)
     transcript = Column(Text)
     duration_seconds = Column(Integer)
