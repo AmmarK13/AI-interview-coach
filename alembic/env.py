@@ -5,6 +5,7 @@ from app.core.database import Base
 from app.models.user import User
 from app.models.interviews import InterviewSession
 from app.models.audio_response import AudioResponse
+from app.models.questions import Question
 from dotenv import load_dotenv
 import os
 from alembic import context
