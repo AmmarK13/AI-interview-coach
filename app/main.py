@@ -297,6 +297,7 @@ def get_audio_response_detail(session_id: str, response_id: str, db: Session = D
 def generate_questions_endpoint(
     session_id: str,
     request: GenerateQuestionRequest,
+    count: int ,
     db: Session = Depends(get_db),
 ):
     session = (
