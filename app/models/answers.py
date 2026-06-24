@@ -16,5 +16,18 @@ class Answers(Base):
     duration_seconds=Column(Integer)
     created_at=Column(TIMESTAMP, server_default=func.now())
     
-    question = relationship("Question", back_populates="answer")
-    evaluation = relationship("AnswerEvaluation", back_populates="answer", uselist=False)
+    session = relationship(
+        "InterviewSession",
+        back_populates="answers"
+    )
+
+    question = relationship(
+        "Question",
+        back_populates="answer"
+    )
+
+    evaluation = relationship(
+        "AnswerEvaluation",
+        back_populates="answer",
+        uselist=False
+    )

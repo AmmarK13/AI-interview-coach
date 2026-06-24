@@ -17,4 +17,4 @@ class AnswerEvaluation(Base):
     improved_answer = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    answer = relationship("Answer", back_populates="evaluation")
+    answer = relationship("Answers", back_populates="evaluation")

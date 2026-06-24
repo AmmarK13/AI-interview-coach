@@ -28,6 +28,6 @@ class InterviewSession(Base):
 
 
 
-
     user = relationship("User", back_populates="sessions")
-    questions=relationship("Question",back_populates="session")
+    questions = relationship("Question", back_populates="session")
+    answers = relationship("Answers", back_populates="session")
