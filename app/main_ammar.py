@@ -12,16 +12,12 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.utils.util import save_upload
+import uvicorn
+from app.utils.genrateQuestions import ExperienceLevel, QuestionType, Difficulty, genrate_questions as generate_questions_llm
 from app.utils.transcribe_ammar import transcribe_audio_ammar
 import uvicorn
-from enum import Enum
 
-class ExperienceLevel(str, Enum):
-    intern = "intern"
-    junior = "junior"
-    mid = "mid"
-    senior = "senior"
-    lead = "lead"
+
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -30,6 +26,12 @@ class CreateSession(BaseModel):
     title:str
     role:str
     level: ExperienceLevel
+
+class GenerateQuestionRequest(BaseModel):
+    role: str
+    level: ExperienceLevel
+    question_type: QuestionType
+    difficulty: Difficulty
 
 
 
@@ -224,12 +226,214 @@ def upload_audio(session_id: str, user_id: str, audio_file: UploadFile = File(..
     }
 
 
+@app.get("/sessions/{session_id}/responses")
+def get_audio_responses(session_id: str, db: Session = Depends(get_db)):
+    session = (
+        db.query(InterviewSession)
+        .filter(
+            InterviewSession.id == session_id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    db_responses = (
+        db.query(AudioResponse)
+        .filter(AudioResponse.session_id == session.id)
+        .order_by(AudioResponse.created_at.asc())
+        .all()
+    )
+
+    responses = [
+        {
+            "id": str(response.id),
+            "audio_path": response.audio_path,
+            "transcript": response.transcript,
+            "duration_seconds": response.duration_seconds,
+            "created_at": response.created_at.isoformat() if response.created_at else None
+        }
+        for response in db_responses
+    ]
+
+    return {
+        "session_id": str(session.id),
+        "responses": responses
+    }
+
+@app.get("/sessions/{session_id}/responses/{response_id}")
+def get_audio_response_detail(session_id: str, response_id: str, db: Session = Depends(get_db)):
+    session = (
+        db.query(InterviewSession)
+        .filter(
+            InterviewSession.id == session_id
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    response = (
+        db.query(AudioResponse)
+        .filter(
+            AudioResponse.id == response_id,
+            AudioResponse.session_id == session.id
+        )
+        .first()
+    )
+    if not response:
+        raise HTTPException(status_code=404, detail="Audio response not found")
+
+    return {
+        "id": str(response.id),
+        "audio_path": response.audio_path,
+        "transcript": response.transcript,
+        "duration_seconds": response.duration_seconds,
+        "created_at": response.created_at.isoformat() if response.created_at else None
+    }
+
+
+@app.post("/sessions/{session_id}/questions/generate")
+def generate_questions_endpoint(
+    session_id: str,
+    request: GenerateQuestionRequest,
+    count: int ,
+    db: Session = Depends(get_db),
+):
+    session = (
+        db.query(InterviewSession)
+        .filter(
+            InterviewSession.id == session_id
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    role = request.role
+    level = request.level
+    question_type = request.question_type
+    difficulty = request.difficulty
+
+    previous_questions = [
+        question.question
+        for question in (
+            db.query(Question)
+            .filter(Question.session_id == session.id)
+            .order_by(Question.created_at.asc())
+            .all()
+        )
+    ]
+
+    try:
+        question_data = generate_questions_llm(
+            role,
+            level,
+            question_type,
+            difficulty,
+            previous_questions=previous_questions,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    question_index = (
+        db.query(Question)
+        .filter(Question.session_id == session.id)
+        .count()
+    )
+
+    question = Question(
+        session_id=session.id,
+        question=question_data["question"]["question"],
+        question_index=question_index,
+        difficulty=question_data["question"]["difficulty"],
+        question_type=question_data["question"]["question_type"],
+    )
+    db.add(question)
+
+    db.commit()
+
+    return {
+        "session_id": str(session.id),
+        "question_id": str(question.id),
+        "generated_question": question_data["question"],
+        "source": question_data.get("source", "gemini"),
+    }
+
+
+@app.get("/sessions/{session_id}/questions")
+def get_questions(session_id: str, db: Session = Depends(get_db)):
+    session = (
+        db.query(InterviewSession)
+        .filter(
+            InterviewSession.id == session_id
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    questions = (
+        db.query(Question)
+        .filter(Question.session_id == session.id)
+        .order_by(Question.created_at.asc())
+        .all()
+    )
+
+    return {
+        "session_id": str(session.id),
+        "questions": [
+            {
+                "id": str(question.id),
+                "question": question.question,
+                "question_index": question.question_index,
+                "difficulty": question.difficulty,
+                "question_type": question.question_type,
+                "created_at": question.created_at.isoformat() if question.created_at else None
+            }
+            for question in questions
+        ]
+    }
+
+@app.get("/sessions/{session_id}/questions/{question_id}")
+def get_question_detail(session_id: str, question_id: str, db: Session = Depends(get_db)):
+    session = (
+        db.query(InterviewSession)
+        .filter(
+            InterviewSession.id == session_id
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    question = (
+        db.query(Question)
+        .filter(
+            Question.id == question_id,
+            Question.session_id == session.id
+        )
+        .first()
+    )
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    return {
+        "id": str(question.id),
+        "question": question.question,
+        "question_index": question.question_index,
+        "difficulty": question.difficulty,
+        "question_type": question.question_type,
+        "created_at": question.created_at.isoformat() if question.created_at else None
+    }
+
+
+
 if __name__ == "__main__":
     print("🚀 Starting AI Interview Coach API...")
     print("📊 Database tables initialized")
     
     uvicorn.run(
-        "app.main:app",
+        "app.main_ammar:app",
         host="127.0.0.1",
         port=8000,
         reload=True
