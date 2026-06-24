@@ -1,3 +1,5 @@
+
+
 from __future__ import annotations
 
 import json
@@ -35,7 +37,7 @@ class Difficulty(str, Enum):
 
 
 try:
-    import google.generativeai as genai
+    from google import genai
 except ImportError:  # pragma: no cover - optional dependency at runtime
     genai = None
 
@@ -185,6 +187,8 @@ def genrate_questions(
     difficulty: str,
     previous_questions: list[str] | None = None,
 ) -> dict[str, Any]:
+    
+    #Improve cost by getting a bunch of questions instead of 1 by 1
     """Generate interview questions using Gemini and return structured JSON.
 
     The output is designed to be easy to store in a database or return from an API.
@@ -198,8 +202,13 @@ def genrate_questions(
 
     if not normalized_role:
         raise ValueError("role cannot be empty")
+    
+
+    print("GEMINI_API_KEY loaded:", bool(GEMINI_API_KEY))
+    print("genai imported:", genai is not None)
 
     if not GEMINI_API_KEY or genai is None:
+
         return _fallback_question(
             normalized_role,
             normalized_level,
@@ -209,8 +218,8 @@ def genrate_questions(
         )
 
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        
         prompt = _build_prompt(
             normalized_role,
             normalized_level,
@@ -218,11 +227,17 @@ def genrate_questions(
             normalized_difficulty,
             previous_questions,
         )
-        response = model.generate_content(prompt)
+        print("Calling Gemini...")
+        response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        )
         payload = _extract_json_payload(response.text)
+        print("Gemini response received")
 
         if not isinstance(payload, dict):
             return _fallback_question(
+
                 normalized_role,
                 normalized_level,
                 normalized_question_type,
@@ -275,7 +290,8 @@ def genrate_questions(
             "source": "gemini",
         }
 
-    except Exception:
+    except Exception as e:
+        print("Gemini Error:", e)
         return _fallback_question(
             normalized_role,
             normalized_level,
