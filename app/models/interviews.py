@@ -30,5 +30,4 @@ class InterviewSession(Base):
 
 
     user = relationship("User", back_populates="sessions")
-    responses = relationship("AudioResponse", back_populates="session")
     questions=relationship("Question",back_populates="session")

@@ -27,4 +27,5 @@ class Question(Base):
     question_type = Column(SQLEnum(QuestionType), nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    session = relationship("InterviewSession", back_populates="questions")
+    session = relationship("InterviewSession", back_populates="question")
+    answer = relationship("Answer", back_populates="question")
