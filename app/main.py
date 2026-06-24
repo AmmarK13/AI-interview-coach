@@ -4,17 +4,21 @@ from fastapi import FastAPI, File, HTTPException,Depends, UploadFile
 from fastapi.responses import JSONResponse
 from app.core.database import Base, engine, SessionLocal
 from app.models.user import User
+from app.models.answers import Answers
 from app.models.questions import Question
 from app.models.interviews import InterviewSession
-from app.models.audio_response import AudioResponse
 from pydantic import BaseModel, EmailStr, Field
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.utils.util import save_upload
+import uvicorn
+from app.models.answer_evaluation import AnswerEvaluation
+from app.utils.genrateQuestions import ExperienceLevel, QuestionType, Difficulty, genrate_questions as generate_questions_llm
 from app.utils.transcribe import transcribe_audio
 import uvicorn
-from app.utils.genrateQuestions import ExperienceLevel, QuestionType, Difficulty, genrate_questions as generate_questions_llm
+
+
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -24,12 +28,11 @@ class CreateSession(BaseModel):
     role:str
     level: ExperienceLevel
 
-
 class GenerateQuestionRequest(BaseModel):
-    role: str
-    level: ExperienceLevel
     question_type: QuestionType
     difficulty: Difficulty
+
+
 
 
 
@@ -135,14 +138,11 @@ def create_session(payload:CreateSession , db: Session=Depends(get_db)):
     }
 
 @app.get("/sessions")
-def get_sessions(userid: str | None = None, db: Session = Depends(get_db)):
-    if not userid:
-        raise HTTPException(status_code=400, detail="userid query parameter is required")
-
+def get_sessions(userid:str, db: Session=Depends(get_db)):
     #check if user exist
-    user = db.query(User).filter(User.id == userid).first()
+    user = db.query(User).filter(User.id==userid).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404,detail="User not found")
     
     return {
         "user_id": str(user.id),
@@ -179,52 +179,52 @@ def get_session(session_id : str, user_id:str,db : Session=Depends(get_db)):
          "created-at":session.created_at
      }
     
-@app.post("/sessions/{session_id}/upload-audio")
-def upload_audio(session_id: str, user_id: str, audio_file: UploadFile = File(...),db: Session = Depends(get_db)):
-    session = (
-        db.query(InterviewSession)
-        .filter(
-            InterviewSession.id == session_id,
-            InterviewSession.user_id == user_id
-        )
-        .first()
-    )
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+# @app.post("/sessions/{session_id}/upload-audio")
+# def upload_audio(session_id: str, user_id: str, audio_file: UploadFile = File(...),db: Session = Depends(get_db)):
+#     session = (
+#         db.query(InterviewSession)
+#         .filter(
+#             InterviewSession.id == session_id,
+#             InterviewSession.user_id == user_id
+#         )
+#         .first()
+#     )
+#     if not session:
+#         raise HTTPException(status_code=404, detail="Session not found")
 
-    allowed_extensions = {".wav", ".mp3", ".qta"}
-    allowed_content_types = {
-        "audio/wav",
-        "audio/x-wav",
-        "audio/mpeg",
-        "audio/mp3",
-        "application/octet-stream",
-    }
+#     allowed_extensions = {".wav", ".mp3", ".qta"}
+#     allowed_content_types = {
+#         "audio/wav",
+#         "audio/x-wav",
+#         "audio/mpeg",
+#         "audio/mp3",
+#         "application/octet-stream",
+#     }
 
-    file_extension = os.path.splitext(audio_file.filename or "")[1].lower()
-    if file_extension not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="Only .wav, .mp3, and .qta files are allowed")
+#     file_extension = os.path.splitext(audio_file.filename or "")[1].lower()
+#     if file_extension not in allowed_extensions:
+#         raise HTTPException(status_code=400, detail="Only .wav, .mp3, and .qta files are allowed")
 
-    saved_path = save_upload(audio_file, "uploads/audio")
+#     saved_path = save_upload(audio_file, "uploads/audio")
 
-    transcription_result = transcribe_audio(saved_path)
-    audio_response = AudioResponse(
-        session_id=session.id,
-        audio_path=saved_path,
-        transcript=transcription_result["transcript"],
-        duration_seconds=transcription_result["duration_seconds"],
-    )
-    db.add(audio_response)
-    db.commit()
-    db.refresh(audio_response)
+#     transcription_result = transcribe_audio_ammar(saved_path)
+#     audio_response = AudioResponse(
+#         session_id=session.id,
+#         audio_path=saved_path,
+#         transcript=transcription_result["transcript"],
+#         duration_seconds=transcription_result["duration_seconds"],
+#     )
+#     db.add(audio_response)
+#     db.commit()
+#     db.refresh(audio_response)
 
-    return {
-        "message": "Audio uploaded and transcribed successfully",
-        "audio_response_id": str(audio_response.id),
-        "audio_path": audio_response.audio_path,
-        "transcript": audio_response.transcript,
-        "duration_seconds": audio_response.duration_seconds,
-    }
+#     return {
+#         "message": "Audio uploaded and transcribed successfully",
+#         "audio_response_id": str(audio_response.id),
+#         "audio_path": audio_response.audio_path,
+#         "transcript": audio_response.transcript,
+#         "duration_seconds": audio_response.duration_seconds,
+#     }
 
 
 @app.get("/sessions/{session_id}/responses")
@@ -239,9 +239,9 @@ def get_audio_responses(session_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Session not found")
 
     db_responses = (
-        db.query(AudioResponse)
-        .filter(AudioResponse.session_id == session.id)
-        .order_by(AudioResponse.created_at.asc())
+        db.query(Answers)
+        .filter(Answers.session_id == session.id)
+        .order_by(Answers.created_at.asc())
         .all()
     )
 
@@ -274,10 +274,10 @@ def get_audio_response_detail(session_id: str, response_id: str, db: Session = D
         raise HTTPException(status_code=404, detail="Session not found")
 
     response = (
-        db.query(AudioResponse)
+        db.query(Answers)
         .filter(
-            AudioResponse.id == response_id,
-            AudioResponse.session_id == session.id
+            Answers.id == response_id,
+            Answers.session_id == session.id
         )
         .first()
     )
@@ -296,7 +296,7 @@ def get_audio_response_detail(session_id: str, response_id: str, db: Session = D
 @app.post("/sessions/{session_id}/questions/generate")
 def generate_questions_endpoint(
     session_id: str,
-    request: GenerateQuestionRequest,
+    request:GenerateQuestionRequest,
     db: Session = Depends(get_db)
 ):
     session = (
@@ -309,8 +309,8 @@ def generate_questions_endpoint(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    role = request.role
-    level = request.level
+    role = session.role
+    level = session.level
     question_type = request.question_type
     difficulty = request.difficulty
 
@@ -358,6 +358,7 @@ def generate_questions_endpoint(
         "generated_question": question_data["question"],
         "source": question_data.get("source", "gemini"),
     }
+ 
 
 
 @app.get("/sessions/{session_id}/questions")
@@ -425,6 +426,78 @@ def get_question_detail(session_id: str, question_id: str, db: Session = Depends
         "question_type": question.question_type,
         "created_at": question.created_at.isoformat() if question.created_at else None
     }
+
+
+@app.post("/sessions/{session_id}/questions/{question_id}/answer")
+def upload_answer(session_id: str, question_id: str, audio_file: UploadFile = File(...),db: Session = Depends(get_db)):
+        session= db.query(InterviewSession).filter(InterviewSession.id==session_id).first()
+        if not session:
+            raise HTTPException(status_code=404,detail="Session not found")
+        question= db.query(Question).filter(Question.id==question_id).first()
+        if not question:
+            raise HTTPException(status_code=404,detail="Question not found")
+        if str(question.session_id) != str(session.id):
+            raise HTTPException(
+                status_code=400,
+                detail="Question does not belong to this session"
+                )
+        
+        
+        allowed_extensions = {".wav", ".mp3", ".qta"}
+        allowed_content_types = {
+            "audio/wav",
+            "audio/x-wav",
+            "audio/mpeg",
+            "audio/mp3",
+            "application/octet-stream",
+        }
+
+        file_extension = os.path.splitext(audio_file.filename or "")[1].lower()
+        if file_extension not in allowed_extensions:
+            raise HTTPException(status_code=400, detail="Only .wav, .mp3, and .qta files are allowed")
+        if audio_file.content_type not in allowed_content_types:
+            raise HTTPException(
+            status_code=400,
+            detail="Invalid audio content type"
+            )
+        try:
+
+            saved_path = save_upload(audio_file, "uploads/audio")
+
+            transcript= transcribe_audio(saved_path)
+
+            answer = Answers(
+                session_id= session.id,
+                questions_id=question.id,
+                audio_path= saved_path,
+                transcript= transcript["transcript"],
+                duration_seconds= transcript["duration_seconds"]
+            )
+            db.add(answer)
+            db.commit()
+            db.refresh(answer)
+
+            return{
+                "message": "Answer transcribed successfully",
+                "answer_id":str(answer.id),
+                "session_id":str(session_id),
+                "question_id":str(question_id),
+                "path":saved_path,
+                "transcript":transcript["transcript"],
+                "duration_seconds":transcript["duration_seconds"]
+            }
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+            status_code=500,
+            detail=str(e)
+            )
+
+
+    
+    
+
+
 
 if __name__ == "__main__":
     print("🚀 Starting AI Interview Coach API...")
