@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.schemas.sessions import CreateSession, GenerateQuestionRequest
-from app.services.session_service import create_new_session, fetch_sessions_by_user, fetch_session_by_id
+from app.schemas.sessions import CreateSession, GenerateQuestionRequest,SessionComplete,Status
+from app.models.interviews import InterviewSession
+from app.services.session_service import create_new_session, fetch_sessions_by_user, fetch_session_by_id,validate_session_complete,build_session_summary,fetch_session_summary
 from app.services.question_service import generate_and_save_question, fetch_questions_for_session, fetch_question_detail
 
 router = APIRouter(tags=["Sessions & Questions"])
@@ -34,3 +36,80 @@ def get_questions(session_id: str, db: Session = Depends(get_db)):
 @router.get("/sessions/{session_id}/questions/{question_id}")
 def get_question(session_id: str, question_id: str, db: Session = Depends(get_db)):
     return fetch_question_detail(db, session_id, question_id)
+
+
+@router.post("/session/{session_id}/complete")
+def complete_session(
+    payload: SessionComplete,
+    db: Session = Depends(get_db)
+):
+    session = fetch_session_by_id(
+        db,
+        payload.sessionid,
+        payload.userid
+    )
+
+    if session["status"] == Status.complete:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot complete session twice"
+        )
+
+    validate_session_complete(
+        db,
+        payload.sessionid
+    )
+
+    print("Validation complete")
+
+    summary = build_session_summary(
+        db,
+        payload.sessionid
+    )
+
+    print("Session summary built")
+
+    session_obj = (
+        db.query(InterviewSession)
+        .filter(InterviewSession.id == payload.sessionid)
+        .first()
+    )
+
+    session_obj.status = Status.complete
+
+    db.commit()
+
+    return {
+        "Message": "Successfuly created summary"
+    }
+
+@router.get("/session/{session_id}/summary")
+def get_summary(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    summary = fetch_session_summary(
+        db,
+        session_id
+    )
+
+    return {
+        "summary_id": str(summary.id),
+        "session_id": str(summary.session_id),
+        "overall_score": float(summary.overall_score),
+        "total_questions": summary.total_questions,
+        "answered_questions": summary.answered_questions,
+        "avg_score_technical": float(summary.avg_score_technical),
+        "avg_score_behavioral": float(summary.avg_score_behavioral),
+        "avg_score_situational": float(summary.avg_score_situational),
+        "highest_score": float(summary.highest_score),
+        "lowest_score": float(summary.lowest_score),
+        "created_at": (
+            summary.created_at.isoformat()
+            if summary.created_at
+            else None
+        )
+    }
+
+
+   
