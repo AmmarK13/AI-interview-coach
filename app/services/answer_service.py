@@ -8,7 +8,7 @@ from app.models.questions import Question
 from app.models.answers import Answers
 from app.models.answer_evaluation import AnswerEvaluation
 from app.utils.util import save_upload
-#from app.utils.transcribe import transcribe_audio
+from app.utils.transcribe import transcribe_audio
 from app.utils.evaluateAnswers import evaluate_answer
 
 def save_and_transcribe_answer(
