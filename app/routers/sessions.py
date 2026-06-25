@@ -6,6 +6,7 @@ from app.schemas.sessions import CreateSession, GenerateQuestionRequest,SessionC
 from app.models.interviews import InterviewSession
 from app.services.session_service import create_new_session, fetch_sessions_by_user, fetch_session_by_id,validate_session_complete,build_session_summary,fetch_session_summary
 from app.services.question_service import generate_and_save_question, fetch_questions_for_session, fetch_question_detail
+from app.services.user_service import update_user_progress
 
 router = APIRouter(tags=["Sessions & Questions"])
 
@@ -49,7 +50,7 @@ def complete_session(
         payload.userid
     )
 
-    if session["status"] == Status.complete:
+    if session.status == Status.complete:
         raise HTTPException(
             status_code=400,
             detail="Cannot complete session twice"
@@ -78,6 +79,7 @@ def complete_session(
     session_obj.status = Status.complete
 
     db.commit()
+    update_user_progress(db,payload.userid)
 
     return {
         "Message": "Successfuly created summary"
