@@ -6,7 +6,8 @@ from app.models.questions import Question,QuestionType
 from app.models.interviews import InterviewSession
 from app.models.answer_evaluation import AnswerEvaluation
 from app.models.session_summary import SessionSummary
-from app.schemas.sessions import CreateSession
+from app.schemas.sessions import CreateSession,Status
+
 
 def create_new_session(db: Session, payload: CreateSession) -> dict:
     user = db.query(User).filter(User.id == payload.userid).first()
@@ -17,7 +18,8 @@ def create_new_session(db: Session, payload: CreateSession) -> dict:
         user_id=payload.userid,
         title=payload.title,
         role=payload.role,
-        level=payload.level
+        level=payload.level,
+        status=Status.inprogress
     )
     db.add(ss)
     db.commit()
