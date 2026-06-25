@@ -14,3 +14,10 @@ class User(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     sessions = relationship("InterviewSession", back_populates="user")
+    
+    progress = relationship(
+        "UserProgress",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )

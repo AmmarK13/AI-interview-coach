@@ -14,6 +14,9 @@ class ExperienceLevel(str, Enum):
     senior = "senior"
     lead = "lead"
 
+class Status(str,Enum):
+    complete ="complete"
+    inprogress="inprogress"
 
 
 class InterviewSession(Base):
@@ -25,9 +28,16 @@ class InterviewSession(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     role = Column(Text, nullable=False)
     level = Column(SQLEnum(ExperienceLevel),nullable=False)
+    status= Column(SQLEnum(Status),nullable=False)
 
 
 
     user = relationship("User", back_populates="sessions")
     questions = relationship("Question", back_populates="session")
     answers = relationship("Answers", back_populates="session")
+    summary = relationship(
+        "SessionSummary",
+        back_populates="session",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
