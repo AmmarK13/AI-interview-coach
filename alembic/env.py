@@ -4,6 +4,8 @@ from sqlalchemy import pool
 from app.core.database import Base
 from app.models.user import User
 from app.models.interviews import InterviewSession
+from app.models.session_summary import SessionSummary
+from app.models.user_progress import UserProgress
 from app.models.answer_evaluation import AnswerEvaluation
 from app.models.answers import Answers
 from app.models.questions import Question
