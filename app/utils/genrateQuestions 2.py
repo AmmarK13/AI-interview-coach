@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 import json
@@ -13,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 class ExperienceLevel(str, Enum):
@@ -37,9 +35,9 @@ class Difficulty(str, Enum):
 
 
 try:
-    from groq import Groq
+    import google.generativeai as genai
 except ImportError:  # pragma: no cover - optional dependency at runtime
-    Groq = None
+    genai = None
 
 
 def _normalize_enum_value(value: str | Enum, enum_cls: type[Enum], field_name: str) -> str:
@@ -187,9 +185,7 @@ def genrate_questions(
     difficulty: str,
     previous_questions: list[str] | None = None,
 ) -> dict[str, Any]:
-    
-    #Improve cost by getting a bunch of questions instead of 1 by 1
-    """Generate interview questions using Groq and return structured JSON.
+    """Generate interview questions using Gemini and return structured JSON.
 
     The output is designed to be easy to store in a database or return from an API.
     """
@@ -202,13 +198,8 @@ def genrate_questions(
 
     if not normalized_role:
         raise ValueError("role cannot be empty")
-    
 
-    print("GROQ_API_KEY loaded:", bool(GROQ_API_KEY))
-    print("Groq imported:", Groq is not None)
-
-    if not GROQ_API_KEY or Groq is None:
-
+    if not GEMINI_API_KEY or genai is None:
         return _fallback_question(
             normalized_role,
             normalized_level,
@@ -218,8 +209,8 @@ def genrate_questions(
         )
 
     try:
-        client = Groq(api_key=GROQ_API_KEY)
-        
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
         prompt = _build_prompt(
             normalized_role,
             normalized_level,
@@ -227,23 +218,11 @@ def genrate_questions(
             normalized_difficulty,
             previous_questions,
         )
-        print("Calling GROQ...")
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            response_format={"type": "json_object"},
-        )
-        payload = _extract_json_payload(response.choices[0].message.content)
-        print("GROQ response received")
+        response = model.generate_content(prompt)
+        payload = _extract_json_payload(response.text)
 
         if not isinstance(payload, dict):
             return _fallback_question(
-
                 normalized_role,
                 normalized_level,
                 normalized_question_type,
@@ -270,6 +249,7 @@ def genrate_questions(
                 normalized_question_type,
                 normalized_difficulty,
                 previous_questions,
+                previous_questions,
             )
 
         if _canonical_text(question_text) in seen_questions:
@@ -292,11 +272,10 @@ def genrate_questions(
                 "difficulty": normalized_difficulty,
                 "question": question_text,
             },
-            "source": "groq",
+            "source": "gemini",
         }
 
-    except Exception as e:
-        print("Groq Error:", e)
+    except Exception:
         return _fallback_question(
             normalized_role,
             normalized_level,

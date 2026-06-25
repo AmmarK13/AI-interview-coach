@@ -57,6 +57,7 @@ httpx
 instructor
 tenacity
 google-generativeai
+groq
 
 
 # ------------------------------------------------------------

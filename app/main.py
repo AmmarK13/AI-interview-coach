@@ -16,6 +16,7 @@ import uvicorn
 from app.models.answer_evaluation import AnswerEvaluation
 from app.utils.genrateQuestions import ExperienceLevel, QuestionType, Difficulty, genrate_questions as generate_questions_llm
 from app.utils.transcribe import transcribe_audio
+from app.utils.evaluateAnswers import evaluate_answer
 import uvicorn
 
 
@@ -495,8 +496,140 @@ def upload_answer(session_id: str, question_id: str, audio_file: UploadFile = Fi
 
 
     
-    
+@app.get("/sessions/{session_id}/questions/{question_id}/answer")
+def get_answer(session_id: str, question_id: str, db: Session = Depends(get_db)):
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
 
+    question = db.query(Question).filter(Question.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    if str(question.session_id) != str(session.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Question does not belong to this session"
+        )
+
+    answer = db.query(Answers).filter(Answers.session_id == session.id, Answers.questions_id == question.id).first()
+    if not answer:
+        raise HTTPException(status_code=404, detail="Answer not found")
+
+    return {
+        "answer_id": str(answer.id),
+        "session_id": str(session.id),
+        "question_id": str(question.id),
+        "audio_path": answer.audio_path,
+        "transcript": answer.transcript,
+        "duration_seconds": answer.duration_seconds,
+        "created_at": answer.created_at.isoformat() if answer.created_at else None
+    }
+
+
+@app.get("/sessions/{session_id}/questions/{question_id}/answer/evaluation")
+def get_answer_evaluation(session_id: str, question_id: str, db: Session = Depends(get_db)):
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    question = db.query(Question).filter(Question.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    if str(question.session_id) != str(session.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Question does not belong to this session"
+        )
+
+    answer = db.query(Answers).filter(Answers.session_id == session.id, Answers.questions_id == question.id).first()
+    if not answer:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    
+    if not answer.audio_path:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    
+    evaluation = (
+        db.query(AnswerEvaluation)
+        .filter(AnswerEvaluation.answer_id == answer.id)
+        .order_by(AnswerEvaluation.created_at.desc())
+        .first()
+    )
+    if not evaluation:
+        eval_data = evaluate_answer(question.question, answer.transcript)
+        evaluation = AnswerEvaluation(
+            answer_id=answer.id,
+            score=eval_data["score"],
+            strengths=eval_data["strengths"],
+            weaknesses=eval_data["weaknesses"],
+            feedback=eval_data["feedback"],
+            improved_answer=eval_data["improved_answer"],
+        )
+        db.add(evaluation)
+        db.commit()
+        db.refresh(evaluation)
+    
+    return {
+        "answer_id": str(answer.id),
+        "score": float(evaluation.score),
+        "strengths": evaluation.strengths,
+        "weaknesses": evaluation.weaknesses,
+        "feedback": evaluation.feedback,
+        "improved_answer": evaluation.improved_answer,
+    }
+
+@app.post("/sessions/{session_id}/questions/{question_id}/answer/evaluation/retry")
+def retry_answer_evaluation(session_id: str, question_id: str, db: Session = Depends(get_db)):
+    """
+    Re-run the LLM evaluation on an existing answer. Creates a
+    new answer_evaluations row without overwriting the old one.
+    """
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    question = db.query(Question).filter(Question.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    if str(question.session_id) != str(session.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Question does not belong to this session"
+        )
+
+    answer = db.query(Answers).filter(Answers.session_id == session.id, Answers.questions_id == question.id).first()
+    if not answer:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    
+    if not answer.audio_path:
+        raise HTTPException(status_code=404, detail="Answer not found")
+
+    # Always generate a new evaluation and insert a new database row
+    eval_data = evaluate_answer(question.question, answer.transcript)
+    evaluation = AnswerEvaluation(
+        answer_id=answer.id,
+        score=eval_data["score"],
+        strengths=eval_data["strengths"],
+        weaknesses=eval_data["weaknesses"],
+        feedback=eval_data["feedback"],
+        improved_answer=eval_data["improved_answer"],
+    )
+    db.add(evaluation)
+    db.commit()
+    db.refresh(evaluation)
+
+    return {
+        "evaluation_id": str(evaluation.id),
+        "answer_id": str(answer.id),
+        "score": float(evaluation.score),
+        "strengths": evaluation.strengths,
+        "weaknesses": evaluation.weaknesses,
+        "feedback": evaluation.feedback,
+        "improved_answer": evaluation.improved_answer,
+        "created_at": evaluation.created_at.isoformat() if evaluation.created_at else None
+    }
 
 
 if __name__ == "__main__":
