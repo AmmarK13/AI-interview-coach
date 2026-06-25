@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 import uvicorn
 from app.routers import root, auth, sessions, answers, responses, users
+from app.models.user_progress import UserProgress
+from app.models.session_summary import SessionSummary
 from app.utils.transcribe_ammar import transcribe_audio_ammar
 
 app = FastAPI(
