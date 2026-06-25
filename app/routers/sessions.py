@@ -111,5 +111,23 @@ def get_summary(
         )
     }
 
+@router.get("/user/{user_id}/sessions/history")
+def get_history(user_id: str, db: Session = Depends(get_db)):
+    # Retrieve user sessions data
+    user_data = fetch_sessions_by_user(db, user_id)
+    sessions = user_data.get("sessions", [])
 
+    history: dict = {}
+    for sess in sessions:
+        # Attempt to fetch a summary; if none exists (e.g., session not completed), skip
+        try:
+            summary = fetch_session_summary(db, str(sess["id"]))
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                # No summary yet for this session – ignore it
+                continue
+            raise
+        history[sess["id"]] = summary
+    return history
+        
    
