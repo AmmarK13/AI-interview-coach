@@ -9,6 +9,7 @@ from app.schemas.sessions import GenerateQuestionRequest
 from app.utils.genrateQuestions import genrate_questions as generate_questions_llm
 import os
 import uuid
+from app.utils.tts import text_to_speech
 
 def generate_and_save_question(
     db: Session,
@@ -150,7 +151,6 @@ def speak_question(db: Session, session_id: str, question_id: str) -> str:
     audio_filename = f"question_{uuid.uuid4().hex}.wav"
     audio_path = os.path.join(target_dir, audio_filename)
 
-    from app.utils.tts import text_to_speech
     try:
         text_to_speech(question.question, audio_path)
     except Exception as e:
