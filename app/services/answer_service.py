@@ -51,7 +51,7 @@ def save_and_transcribe_answer(
         )
 
     try:
-        saved_path = save_upload(audio_file, "uploads/audio")
+        saved_path = save_upload(audio_file, "audio/answers")
         if transcribe_fn is None:
             transcribe_fn = transcribe_audio
         transcript_data = transcribe_fn(saved_path)

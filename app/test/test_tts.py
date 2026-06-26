@@ -8,8 +8,8 @@ from app.utils.tts import text_to_speech
 
 if __name__ == "__main__":
     print("Testing text-to-speech conversion...")
-    text = "Welcome to the AI interview coach. Let's begin the interview."
-    output_path = "app/uploads/test_welcome.wav"
+    text = "Hello my name is Ammar Khan and I am a fat ass."
+    output_path = "app/audio/answers/test_welcome2.wav"
     
     text_to_speech(text, output_path)
     

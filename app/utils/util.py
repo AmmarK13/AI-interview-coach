@@ -2,7 +2,7 @@ import os
 import uuid
 from fastapi import UploadFile, File, HTTPException
 
-def save_upload(file: UploadFile, subfolder: str = "uploads/audio") -> str:
+def save_upload(file: UploadFile, subfolder: str = "audio/answers") -> str:
     # 1) Build absolute folder path from project root
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     target_dir = os.path.join(project_root, subfolder)

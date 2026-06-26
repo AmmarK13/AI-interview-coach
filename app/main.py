@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import uvicorn
-from app.routers import root, auth, sessions, answers, responses, users
+from app.routers import root, auth, sessions, answers, responses, users, questions
 from app.utils.transcribe import transcribe_audio
 
 app = FastAPI(
@@ -18,6 +18,7 @@ app.include_router(sessions.router)
 app.include_router(answers.router)
 app.include_router(responses.router)
 app.include_router(users.router)
+app.include_router(questions.router)
 
 
 if __name__ == "__main__":
