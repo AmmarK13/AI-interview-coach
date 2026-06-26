@@ -29,6 +29,11 @@ class Question(Base):
 
     session = relationship("InterviewSession", back_populates="questions")
     answer = relationship(
-    "Answers",
-    back_populates="question"
-)
+        "Answers",
+        back_populates="question"
+    )
+    voice_outputs = relationship(
+        "VoiceOutput",
+        back_populates="question",
+        cascade="all, delete-orphan"
+    )

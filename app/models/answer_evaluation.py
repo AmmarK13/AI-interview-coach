@@ -18,3 +18,8 @@ class AnswerEvaluation(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     answer = relationship("Answers", back_populates="evaluation")
+    voice_outputs = relationship(
+        "VoiceOutput",
+        back_populates="evaluation",
+        cascade="all, delete-orphan"
+    )

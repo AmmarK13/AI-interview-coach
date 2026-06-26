@@ -9,6 +9,7 @@ from app.models.user_progress import UserProgress
 from app.models.answer_evaluation import AnswerEvaluation
 from app.models.answers import Answers
 from app.models.questions import Question
+from app.models.voice_output import VoiceOutput
 from dotenv import load_dotenv
 import os
 from alembic import context
