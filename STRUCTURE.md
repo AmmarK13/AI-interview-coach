@@ -7,10 +7,15 @@ This document explains the organization and architectural layers of the project.
 ```text
 .
 ├── app/
+│   ├── audio/               # Audio file storage directories
+│   │   ├── answers/         # Saved user response recordings (answers) & evaluation speech
+│   │   └── question/        # TTS generated question & evaluation speech files
+│   │
 │   ├── core/                # Core configurations and global settings
 │   │   ├── config.py        # Environmental settings
 │   │   ├── database.py      # Database setup and session handlers
-│   │   └── security.py      # Password hashing/security configuration (pwd_context)
+│   │   ├── security.py      # Password hashing/security configuration
+│   │   └── tts_models/      # Offline Piper TTS voice model files (.onnx & .json)
 │   │
 │   ├── models/              # SQLAlchemy database tables and mappings
 │   │   ├── answer_evaluation.py
@@ -18,7 +23,10 @@ This document explains the organization and architectural layers of the project.
 │   │   ├── audio_response.py
 │   │   ├── interviews.py
 │   │   ├── questions.py
-│   │   └── user.py
+│   │   ├── session_summary.py
+│   │   ├── user.py
+│   │   ├── user_progress.py
+│   │   └── voice_output.py  # Tracks all TTS speech assets
 │   │
 │   ├── schemas/             # Pydantic models for request/response serialization
 │   │   ├── auth.py          # Registration and Login body definitions
@@ -27,29 +35,34 @@ This document explains the organization and architectural layers of the project.
 │   ├── services/            # Core business logic and database access layer
 │   │   ├── auth_service.py      # Registration and Login execution
 │   │   ├── session_service.py   # CRUD for mock sessions
-│   │   ├── question_service.py  # LLM generation and retrieval of questions
-│   │   └── answer_service.py    # Transcription, evaluation, and retries (accepts a custom transcribe function)
+│   │   ├── question_service.py  # LLM question handling and TTS speak generation
+│   │   ├── answer_service.py    # Transcription, evaluation, and retries
+│   │   └── user_service.py      # User progress calculation and sync
 │   │
 │   ├── routers/             # API routes matching endpoints to service actions
 │   │   ├── root.py          # `/` and `/health` check endpoints
 │   │   ├── auth.py          # `/auth/*` routes
 │   │   ├── sessions.py      # `/sessions/*` routes
-│   │   ├── answers.py       # `/sessions/.../answer/*` routes (uses dynamic transcription function)
-│   │   └── responses.py     # `/sessions/.../responses/*` routes
+│   │   ├── answers.py       # `/sessions/.../answer/*` routes
+│   │   ├── responses.py     # `/sessions/.../responses/*` routes
+│   │   ├── users.py         # `/users/{user_id}/progress` endpoint
+│   │   └── questions.py     # `/sessions/.../questions/.../speak` endpoints
 │   │
-│   ├── utils/               # Internal utility functions (unchanged legacy helpers)
+│   ├── utils/               # Internal utility and helper modules
 │   │   ├── evaluateAnswers.py   # Groq evaluation client logic
 │   │   ├── genrateQuestions.py  # Groq question generation client logic
 │   │   ├── transcribe.py        # Faster‑Whisper transcription (default)
 │   │   ├── transcribe_ammar.py  # Whisper.cpp CLI wrapper (partner's version)
-│   │   └── util.py              # General helper functions (such as save upload)
+│   │   ├── tts.py               # Piper TTS voice generation helper
+│   │   └── util.py              # General helper functions (file saving)
 │   │
 │   ├── test/                # Unit and integration test files
 │   │   ├── test_modellist.py
-│   │   └── test_whisper.py  # Moved from utils to tests
+│   │   ├── test_whisper.py
+│   │   └── test_tts.py      # Tests Piper TTS audio generation
 │   │
-│   ├── main.py              # Main API entrypoint – registers routers and sets `app.state.transcribe_fn = transcribe_audio`
-│   └── main_ammar.py        # Partner's entrypoint – registers the same routers but sets `app.state.transcribe_fn = transcribe_audio_ammar`
+│   ├── main.py              # Main API entrypoint (using standard transcribe)
+│   └── main_ammar.py        # Partner's entrypoint (using Whisper.cpp transcription)
 │
 ├── requirements.txt         # Consolidated Python dependencies list
 └── alembic.ini              # Database migration tool configuration
@@ -57,45 +70,23 @@ This document explains the organization and architectural layers of the project.
 
 ## Key Architecture Layers
 
-1. **Routing Layer (`app/routers/`)** – Defines fastapi routes, validates request parameters, and delegates all business logic to the Services. The **answers router** now extracts the transcription function from `request.app.state` so the same service can be used with either transcription backend.
+1. **Routing Layer (`app/routers/`)** – Defines fastapi routes, validates request parameters, and delegates all business logic to the Services.
 
-2. **Service Layer (`app/services/`)** – Implements core operations. `save_and_transcribe_answer` now accepts an optional `transcribe_fn` argument, defaulting to the standard `transcribe_audio`. This enables the `main_ammar.py` entrypoint to inject the Whisper‑CPP based `transcribe_audio_ammar` without altering service code.
+2. **Service Layer (`app/services/`)** – Implements core business logic. 
+   - `session_service.py` manages interview sessions.
+   - `question_service.py` generates new questions and implements TTS generation using the local Piper engine.
+   - `user_service.py` computes running progress records for users.
+   - `answer_service.py` handles audio transcription and LLM-based evaluation.
 
 3. **Database Layer (`app/models/` & `app/core/database.py`)** – Defines SQLAlchemy models and provides session handling.
 
 4. **Validation Layer (`app/schemas/`)** – Houses Pydantic schemas for request payloads and response models.
 
-5. **Core Configuration (`app/core/`)** – Includes the database engine, session factory, and the shared password‑hashing context in `security.py`.
+5. **Core Configuration (`app/core/`)** – Includes the database engine, session factory, shared security context, and holds downloaded TTS voice models.
+
+---
 
 ## Differences between `main.py` and `main_ammar.py`
-- **`main.py`**: Uses the Python‑native `faster‑whisper` package for transcription and registers it via:
-  ```python
-  app.state.transcribe_fn = transcribe_audio
-  ```
-- **`main_ammar.py`**: Uses the Whisper.cpp CLI wrapper (`transcribe_audio_ammar`) and registers it with:
-  ```python
-  app.state.transcribe_fn = transcribe_audio_ammar
-  ```
-- Both entrypoints load **exactly the same set of routers** and therefore expose an identical public API; only the underlying transcription engine differs.
-
----
-
-## How the Dynamic Transcription Works
-1. The **answers router** receives the incoming request and reads `transcribe_fn` from `request.app.state`.
-2. It forwards this callable to `save_and_transcribe_answer`.
-3. The service function calls the provided `transcribe_fn` (or falls back to the default `transcribe_audio`).
-4. This design keeps the service layer pure and testable while allowing each entrypoint to swap the transcription backend with a single line of configuration.
-
----
-
-## Cleanup & Refactoring Summary
-- Removed all duplicate/backup files (`* 2.py`).
-- Moved the lone test script from `app/utils/` to `app/test/`.
-- Consolidated route definitions into dedicated router modules.
-- Centralised business logic into service modules.
-- Added `app.state.transcribe_fn` handling for both main entrypoints.
-- Updated documentation (this file) to reflect the new layout and dynamic transcription mechanism.
-
----
-
-*This structure provides a clean, maintainable codebase that can easily switch between transcription back‑ends, supports future extensions, and follows modern FastAPI best practices.*
+- **`main.py`**: Uses the Python‑native `faster‑whisper` package for transcription.
+- **`main_ammar.py`**: Uses the Whisper.cpp CLI wrapper (`transcribe_audio_ammar`) and preloads extra models.
+- Both entrypoints load the same routes and expose the same public API.
